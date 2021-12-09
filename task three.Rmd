@@ -1,0 +1,407 @@
+---
+title: "Text mining - Task Three"
+author: "Qiannan Shen"
+date: "12/7/2021"
+output: pdf_document
+---
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+#library the required packages 
+library(tnum)
+library(knitr)
+library(tidyverse)
+library(gutenbergr)
+source("doc/Book2TN-v6A-1.R")
+library(sentimentr)
+library(lexicon)
+library(tidytext)
+library(ggplot2)
+
+```
+
+# Truenumbers
+Firstly, I use functions in the Tnum package to load the book into the mssp test2 number space. Using the function tnBooksFromLines(text, root) and sourcing the document "doc/Book2TN-v6A-1.R" could complete this. Tnum package is a good tool to let us explore the data. The function tnum.getDBPathList() displays a list of the subjects in the tnum space which we could check whether our book has uploaded.
+
+Secondly, using the function tnum.query() could help to approach the truenumber database, and the function tnum.objectsToDf() could let me make data frame from the list of tnum objects. I use tnum.query(query = "homer/the_odyssey/section# has text", max = 9000) to get the text in the book by section. Then I clean the tnum data frame. I separate the "subject" column into "Author", "Book_name", "Section", "Paragraph", and "Sentence" and make it a numeric type which could make following data-processing and visualization easier. Table 1 and table 2 display the clean data frame I got from Truenumber.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+tnum.authorize("mssp1.bu.edu") 
+# get the access of the server
+
+tnum.setSpace("test2") 
+# set to number space "test2"
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+mybook <- gutenberg_download(1727)
+mybook_tnum <- read.table("mybook.txt", header = T)
+
+# write.table(my_book, "mybook.txt", row.names = F)
+# martian_tnum <- read.table("mybook.txt", header = T)
+# tnBooksFromLines(mybook_tnum$text, "Homer/The_Odyssey")
+
+#tnum.getDBPathList(taxonomy = "subject", level = 2, max = 200)
+
+# q0 <- tnum.query(query = "Homer/# has ordinal", max=500)   ## everything
+# df0 <- tnum.objectsToDf(q0)
+# 
+# a <- tnum.query((query = "homer/the_odyssey/section:0002# has text"))
+# dfa <- tnum.objectsToDf(a)
+# 
+# b <- tnum.query((query = "homer/the_odyssey/section:0002# has count#"))
+# dfb <- tnum.objectsToDf(b)
+
+q01 <- tnum.query(query = "homer/the_odyssey/section# has text", max = 9000) 
+       # get the text by section in the Odyssey book
+
+df01 <- tnum.objectsToDf(q01)
+#let me make data frame from the list of tnum objects
+
+tnum_book <- df01 %>% separate(col=subject,into = c("Author", "Book_name", "Section","Paragraph","Sentence"), 
+                                 sep = "/", fill = "right")
+# seperate the column "subject"
+
+tnum_book$Section <- as.numeric(gsub("[^\\d]+", "", tnum_book$Section, perl=TRUE))
+tnum_book$Paragraph <- as.numeric(gsub("[^\\d]+", "", tnum_book$Paragraph, perl=TRUE))
+tnum_book$Sentence <- as.numeric(gsub("[^\\d]+", "", tnum_book$Sentence, perl=TRUE))
+# make the string in these three column to be number
+
+library(kableExtra)
+table <- kable(tnum_book[2:10, 1:7], caption = "Dataframe from Tnum", booktabs = T, row.names = F) %>%
+  kable_styling(latex_option = "striped", full_width = F) %>%
+  column_spec(column = 7, width = "3cm")
+table
+
+#using kable to make a table to show the part of the data frame
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+library(kableExtra)
+table1 <- kable(tnum_book[c(112,114,123,132,407,568,766,904), 1:7], caption = "Dataframe from Tnum", booktabs = T, row.names = F) %>%
+  kable_styling(latex_option = "striped", full_width = F) %>%
+  column_spec(column = 7, width = "3cm")
+table1
+
+#using kable to make a table to show the part of the data frame
+
+```
+
+# Sentiment plot
+Figure 1 is the aggregated sentiment plot which displays the sentiment distribution for every section and the red dots are the mean sentiment score for these sections. This graph also ranks the sentiment from highest positive to lowest negative so that we could check the sentiment level based on the whole book easily.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE,fig.cap="Aggregated Sentiment Plot",fig.width=6,fig.height=4}
+out <- with(tnum_book, sentiment_by(
+    get_sentences(string.value), 
+    list(Section)))
+# keep the column "Section"
+# get_sentences could get the average sentiment
+
+plot(out)
+
+# out <- tnum_book %>%
+#   mutate(dialogue_split = get_sentences(string.value)) %$%
+#   sentiment_by(dialogue_split, list(Section))
+# 
+# out <- tnum_book %>%
+#   get_sentences() %$%
+#   sentiment_by(string.value, list(Section))
+```
+
+Figure 2 is smoothed plot for the duration of the text based on percentage, allowing for comparison between plots of different texts. This plot gives the overall decreasing shape of the text's sentiment. 
+```{r echo=FALSE, warning=FALSE, message=FALSE,fig.cap="Sentiment Level Plot",fig.width=6,fig.height=3.5, fig.align = "center"}
+plot(uncombine(out))
+```
+
+\newpage
+# Emotion Plot
+
+```{r echo=FALSE, warning=FALSE, message=FALSE,fig.height=3,fig.width = 6,fig.cap="Emotion Plot",fig.align = "center"}
+
+out_emotion <- with(tnum_book,emotion_by(
+    get_sentences(string.value), 
+    list(Section)))
+# keep the column "Section"
+# emotion_by could get the average emotion
+plot(out_emotion)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE,fig.height=3,fig.width = 6,fig.cap="Emotion Level Plot",fig.align = "center"}
+
+plot(uncombine(out_emotion))
+```
+
+\newpage
+# Comparison
+Figure 3 compares the bag of words analysis done in Task two using Bing with the analysis in sentimentr and tnum package. Parts of them look the same in the sentiment, while some parts of the sentiment result are dramatically different. As we can see in sections 10, 17, and 23, the sentiment result is much different between these two methods.  
+```{r echo=FALSE, warning=FALSE, message=FALSE,fig.cap="Bing v.s. Sentimentr in Sentiment Analysis",fig.width=6, fig.height=3,fig.align = "center"}
+
+out <- out %>% mutate(senti_sentiment = scale(ave_sentiment))
+# add a new column senti_sentiment = scale the ave_sentiment
+
+tidy_book <- mybook %>%
+  
+  mutate(
+    linenumber = row_number(), 
+    #adds new variable (column) "linenumber" = #number of the row
+    
+    chapter = cumsum(str_detect(text, 
+                                regex("^BOOK [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+                              #add new variable "chapter" = #number of the chapter
+  
+  unnest_tokens(word, text) #unnest_tokens used here are column names. 
+
+  #the output column name that will be created as the text is unnested into it (word, in this case)
+  #the input column that the text comes from (text, in this case). 
+
+
+bing_1 <- tidy_book %>% 
+  inner_join(get_sentiments("bing")) %>%
+  # inner_join includes all rows in tidy_book and sentiment lexicons in "bing"
+
+  mutate(method = "Bing et al.") %>% 
+  # add a coloum "method" with all elements of "Bing et al."
+  
+  count(method, Section = chapter, sentiment) %>%
+  # keep "method column"
+  # create a column "index" = linenumber/80
+  # count the number# of sentiment
+  
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  # it makes a dataset wider by increasing the number of columns and decreasing the number of rows
+  # make the data in sentiment be the variables
+  
+  mutate(sentiment = positive - negative) %>%
+  # add column “sentime” = positive - negative
+  
+  mutate(bing_sentiment = scale(sentiment)) %>% 
+  # add new column "bing_sentiment" = scale the sentiment
+  
+  select(method, Section, bing_sentiment)
+  # select three column to be a new data frame
+
+
+bing_senti <- left_join(out, bing_1, by = "Section") %>%
+  #includes all rows in out 
+  #combine by "Section"
+  
+  select(Section, bing_sentiment, senti_sentiment) %>% 
+  # select three column to be a new data frame
+  
+  pivot_longer(cols=c("senti_sentiment","bing_sentiment"), names_to = "sentiment_method")
+  # increasing the number of rows and decreasing the number of columns
+
+ggplot(bing_senti, aes(y = value,x = Section)) +
+  geom_bar(aes(fill = sentiment_method), stat = "identity", position = "dodge",width = 0.7) + 
+  theme_bw() +
+  ggtitle("Bing v.s. Sentimentr in Sentiment Analysis")
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE,fig.cap="Affin v.s. Sentimentr in Sentiment Analysis",fig.width=6, fig.height=3,fig.align = "center"}
+affin_1 <- tidy_book %>% 
+  inner_join(get_sentiments("afinn")) %>%
+  # inner_join includes all rows in tidy_book and sentiment lexicons in "affin"
+
+  count(Section = chapter, value) %>%
+  # keep "method column"
+  # count the number# of sentiment
+  
+  group_by(Section) %>%
+  # make data frame grouped by Section
+  
+  summarise(sentiment = mean(value * n)) %>%
+  # creates a new data frame based on grouped data with the new colnumn "sentiment" = mean(value * n)
+  
+  mutate(affin_sentiment = scale(sentiment)) %>% 
+  # add new column "affin_sentiment" = scale the sentiment
+  
+  mutate(method = "AFFIN") %>% 
+  # add a coloum "method" with all elements of "AFFIN"
+
+  select(method, Section, affin_sentiment)
+  # select three column to be a new data frame
+
+
+affin_senti <- left_join(out, affin_1, by = "Section") %>% 
+  #includes all rows in out 
+  #combine by "Section"
+  
+  select(Section, affin_sentiment, senti_sentiment) %>% 
+  # select three column to be a new data frame
+
+  pivot_longer(cols=c("senti_sentiment", "affin_sentiment"), names_to = "sentiment_method")
+  # increasing the number of rows and decreasing the number of columns
+
+ggplot(affin_senti, aes(y = value,x = Section)) +
+  geom_bar(aes(fill = sentiment_method), stat = "identity", position = "dodge",width = 0.7) + 
+  theme_bw() +
+  ggtitle("Affin v.s. Sentimentr in Sentiment Analysis")
+
+
+```
+
+Figure 4 compares the bag of words analysis done in Task two using Affin with the analysis in sentimentr and tnum package. Figure 5 compares the bag of words analysis done in Task two using NRC with the analysis in sentimentr and tnum package. The results are similar to Bing and sentimentr one is somewhat different in that the sentiment analysis.
+```{r echo=FALSE, warning=FALSE, message=FALSE,fig.cap="NRC v.s. Sentimentr in Sentiment Analysis",fig.width=6, fig.height=2.5,fig.align = "center"}
+
+nrc_1 <- tidy_book %>% 
+  inner_join(get_sentiments("nrc") %>% 
+  # inner_join includes all rows in tidy_book and sentiment lexicons in "nrc"
+
+               filter(sentiment %in% c("positive", 
+                                       "negative"))
+  ) %>%
+  # create data frame with sentiment in "positive" and "negative"
+  
+  mutate(method = "NRC") %>%
+  # add a coloum "method" with all elements of "NRC"
+
+  count(method, Section = chapter, sentiment) %>%
+  # keep "method column"
+  # create a column "index" = linenumber/80
+  # count the number# of sentiment
+  
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  # it makes a dataset wider by increasing the number of columns and decreasing the number of rows
+  # make the data in sentiment be the variables
+  
+  mutate(sentiment = positive - negative) %>%
+  # add column “sentime” = positive - negative
+
+  mutate(nrc_sentiment = scale(sentiment)) %>% 
+  # add new column "nrc_sentiment" = scale the sentiment
+  
+  select(method, Section, nrc_sentiment)
+  # select three column to be a new data frame
+
+
+nrc_senti <- left_join(out, nrc_1, by = "Section") %>% 
+  #includes all rows in out 
+  #combine by "Section"
+  
+  select(Section, nrc_sentiment, senti_sentiment) %>% 
+  # select three column to be a new data frame
+
+  pivot_longer(cols=c("senti_sentiment", "nrc_sentiment"), names_to = "sentiment_method")
+  # increasing the number of rows and decreasing the number of columns
+
+ggplot(nrc_senti, aes(y = value,x = Section)) +
+  geom_bar(aes(fill = sentiment_method), stat = "identity", position = "dodge",width = 0.7) + 
+  theme_bw() +
+  ggtitle("NRC v.s. Sentimentr in Sentiment Analysis")
+
+
+```
+
+\newpage
+\newpage
+## Extra point: Characters Tag
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+ulysses <- tnum.query("*the_odyssey* has * = REGEXP(\"ulysses|Ulysses\")", max= 2000) %>% 
+  tnum.objectsToDf()
+telemachus <- tnum.query("*the_odyssey* has * = REGEXP(\"Telemachus|telemachus\")", max= 2000) %>% 
+  tnum.objectsToDf()
+
+ulysses <- ulysses %>% separate(col=subject,into = c("Author", "Book_name", "Section","Paragraph","Sentence"), 
+                                 sep = "/", fill = "right")
+ulysses$Section <- as.numeric(gsub("[^\\d]+", "", ulysses$Section, perl=TRUE))
+ulysses$Paragraph <- as.numeric(gsub("[^\\d]+", "", ulysses$Paragraph, perl=TRUE))
+ulysses$Sentence <- as.numeric(gsub("[^\\d]+", "", ulysses$Sentence, perl=TRUE))
+# make the string in these three column to be number
+
+telemachus <- telemachus %>% 
+  separate(col=subject,into = c("Author", "Book_name", "Section","Paragraph","Sentence"), 
+           sep = "/", fill = "right")
+telemachus$Section <- as.numeric(gsub("[^\\d]+", "", telemachus$Section, perl=TRUE))
+telemachus$Paragraph <- as.numeric(gsub("[^\\d]+", "", telemachus$Paragraph, perl=TRUE))
+telemachus$Sentence <- as.numeric(gsub("[^\\d]+", "", telemachus$Sentence, perl=TRUE))
+# make the string in these three column to be number
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+#count the number of times Ulysses appears
+track_ulysses <- ulysses %>%
+  mutate(value = 1) %>%
+  count(Section, value) %>%
+  select(Section,n)
+
+#count the number of times telemachus appears
+track_telemachus <- telemachus %>%
+  mutate(value = 1) %>%
+  count(Section, value) %>%
+  select(Section,n)
+
+table2 <- kable(track_ulysses, caption = "The number of times Ulysses appears", 
+                booktabs = T, row.names = F) %>%
+  kable_styling(latex_option = "striped", full_width = F)
+table2
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+table3 <- kable(track_telemachus, caption = "The number of times Telemachus appears", 
+                booktabs = T, row.names = F) %>%
+  kable_styling(latex_option = "striped", full_width = F)
+table3
+
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+#count the number of times they appear
+track_both <- ulysses %>%
+  inner_join(telemachus, by = c("Section","Paragraph")) %>%
+  mutate(value = 1) %>%
+  count(Section, value) %>%
+  select(Section,n)
+
+table4 <- kable(track_both, caption = "The number of times both of Telemachus and Ulysses appear", 
+                booktabs = T, row.names = F) %>%
+  kable_styling(latex_option = "striped", full_width = F)
+table4
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.cap="times of appearance with sentiment"}
+
+out1 <- out %>%
+  mutate(sentiment = ave_sentiment*100) %>%
+  left_join(track_ulysses, by = "Section") %>%
+  left_join(track_telemachus, by = "Section") %>%
+  rename(ulysses = n.x) %>%
+  rename(telemachus = n.y)
+
+out1[is.na(out1)] <- 0
+
+colors = c("Ulysses" = "pink", "Telemachus" = "gray")
+colors2 = "Sentiment * 100" = "skyblue"
+ggplot(out1) +
+  geom_line(aes(x = Section, y = ulysses, color = "Ulysses"), lwd = 1.5) + 
+  geom_line(aes(x = Section, y = telemachus, color = "Telemachus"), lwd =1.5) + 
+  geom_bar(aes(x = Section, y = sentiment, fill = "Sentiment * 100"), stat = "identity") +
+  labs(color = "Legend", y = "times") +
+  scale_color_manual(values = colors) +
+  scale_fill_manual(values = colors2) +
+  theme_bw()
+
+  
+
+```
+
+\newpage
+## Citation
+Text Mining with R https://www.tidytextmining.com
+\space
+https://github.com/trinker/sentimentr
+\space
+https://github.com/MA615-Yuli/MA615_assignment4

@@ -1,0 +1,251 @@
+---
+title: "Text mining - Task Two"
+author: "Qiannan Shen"
+date: "12/6/2021"
+output: pdf_document
+---
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+#library the required packages 
+library(gutenbergr)
+library(dplyr)
+library(stringr)
+library(tidytext)
+library(tidyr)
+library(ggplot2)
+library(wordcloud)
+library(reshape2)
+
+```
+
+# Task one
+
+I choose the fiction The Odyssey by Homer as the book I focus on my text analysis. This book has 24 BOOKS which I regard as 24 chapters in a whole book, and each chapter has paragraphs and sentences that it is available of a short analysis. After picking the target book, I downloaded the book source using gutenbergr package.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+mybook <- gutenberg_download(1727) #download the book using the gutenbergr package
+
+tidy_book <- mybook %>%
+  mutate(
+    linenumber = row_number(), #adds new variable (column) "linenumber" = #number of the row
+    chapter = cumsum(str_detect(text, 
+                                regex("^BOOK [\\divxlc]", 
+                                      ignore_case = TRUE)))) %>%
+                              #add new variable "chapter" = #number of the chapter
+  unnest_tokens(word, text) #unnest_tokens used here are column names. 
+
+  #the output column name that will be created as the text is unnested into it (word, in this case)
+  #the input column that the text comes from (text, in this case). 
+
+```
+
+# Task two
+
+## Sentiment analysis by three methods
+
+First, the analysis uses the function unnest_tokens() to take the text of the novels and convert the text to a tidy format. Then, I use the sentiment lexicon methods Bing, Affin, and NRC in the tidytext package to do the text analysis to digest the sentiment through the narrative of your book. The function get_sentiments() allows us to get specific sentiment lexicons and inner_join() to perform the sentiment analysis. And eventually, I could compute the sentiment score and do visualizations through the storyline of the book. The result comparing the three sentiment lexicon methods is shown below in Figure 1. The overall sentiment result by Affin and Bing methods tend to be similar, while the result by NRC would show a little different. At the beginning of the book, the sentiment mostly shows the positive sentiment. Though, the sentiment through the following part of the book fluctuates frequently that intersperses with positive and negative sentiment.
+
+The Odyssey tells the story of a heroic Odysseus who fights with many antagonists on the arduous journey home from war for 10 years. On his way back home, we could explore the inspiration about fate, recitation, and the power of civilization and barbarism. He finally returned to his hometown Ithaca, defeated the rude suitors who camped out in his palace, and reunited with his loyal wife Penelope. And this could well explain the fluctuated sentiment change through the book since he suffered the 10-year-long arduous journey and he had but overcome lots of challenges with pain and joy.
+
+```{R, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="Sentiment Plot by Three Methods",fig.height=3}
+# comparison between there lexicons
+afinn <- tidy_book %>% 
+  
+  inner_join(get_sentiments("afinn")) %>% 
+  # allows us to get specific sentiment lexicons using "affin"
+  # inner_join includes all rows in tidy_book and sentiment lexicons in "affin"
+  
+  group_by(index = linenumber %/% 80) %>% 
+  # convert an exiting table into a grouped table by index
+  
+  summarise(sentiment = sum(value)) %>% 
+  # create a new data frame 
+  # It will have one (or more) rows for each combination of grouping variables
+  # the output would be the column "sentiment" = sum(value)
+  
+  mutate(method = "AFINN")
+  # add a coloum "method" with all elements of "AFFIN"
+
+
+bing_and_nrc <- bind_rows(#bind two data frames below by row
+  
+  tidy_book %>% 
+    inner_join(get_sentiments("bing")) %>%   
+    # inner_join includes all rows in tidy_book and sentiment lexicons in "bing"
+    
+    mutate(method = "Bing et al."),
+    # add a coloum "method" with all elements of "Bing et al."
+  
+  tidy_book %>% 
+    inner_join(get_sentiments("nrc") %>% 
+    # inner_join includes all rows in tidy_book and sentiment lexicons in "nrc"
+                 filter(sentiment %in% c("positive", 
+                                         "negative")) 
+    # subset a data frame with sentiment = "positive" or "negative"
+    ) %>%
+    
+    mutate(method = "NRC")) %>%
+    # add a coloum "method" with all elements of "NRC"
+  
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  # keep "method column"
+  # create a column "index" = linenumber/80
+  # count the number# of sentiment
+  
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  # it makes a dataset wider by increasing the number of columns and decreasing the number of rows
+  # make the data in sentiment be the variables
+  
+  mutate(sentiment = positive - negative)
+  # add column “sentime” = positive - negative
+
+
+bind_rows(afinn, 
+          bing_and_nrc) %>% 
+  #bind two dataframe
+  
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")+
+  theme_bw()
+
+```
+
+## Positive & Negative sentiment plot
+
+Then, the report wants to figure out the frequency of the negative and positive words shown in the book, and the result is shown in Figure 2. For the positive chart, "good" is the most frequent word shown in the whole book, and meanwhile "great", "like", and "heaven" is also the common positive words that appeared. For the negative chart, "stranger" ranks first in the count of the negative words, and the words "killed", "dead", "fell", "death" is also common in the book. It is obvious that on his way back home Odysseus experienced many horrible and magical things and people fight and died around him, so that the words like "killed", "dead" appear so frequently.
+
+```{R, echo=FALSE, warning=FALSE, message=FALSE, fig.height=3.5, fig.cap="Negative & Positive charts"}
+bing_word_counts <- tidy_book %>%
+  
+  inner_join(get_sentiments("bing")) %>%
+  # inner_join includes all rows in tidy_book and sentiment lexicons in "bing"
+
+  count(word, sentiment, sort = TRUE) %>%
+  # keep word and sentiment
+  # count the number# of the sentiment
+  # sort by the number# of count
+  
+  ungroup()
+  # return to a non-grouped form
+
+
+bing_word_counts %>%
+  
+  group_by(sentiment) %>%
+  # make date frame grouped by sentiment
+  
+  slice_max(n, n = 10) %>% 
+  # select rows with highest or lowest values of a variable by sentiment "negative" and "positive"
+  # the outcome has 20 rows with 10 negative and 10 positive
+
+  ungroup() %>%
+  # return to a non-grouped form
+
+  mutate(word = reorder(word, n)) %>%
+  # reoder the order of word by n
+  
+  ggplot(aes(n, word, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free_y") +
+  labs(x = "Contribution to sentiment",
+       y = NULL) +
+  theme_bw()
+
+```
+
+## Wordcloud plot
+
+Figure 3 shows the frequency of the words that appear in the book. It indicates that the "Ulysses" which is the Latin name of Odysseus, and his son's name "Telemachus" are the most common words in the book. They are also the main characters in the story. Other words like "house", "home", "son", "father", and "suitors" also show frequent, which tells his desire of going home.
+
+```{R, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="Wordcloud Plot"}
+tidy_book %>%
+  
+  anti_join(stop_words) %>%
+  # return all rows from tidy_book without a match in stop_words
+  
+  count(word) %>%
+  # count the number# of word
+  
+  with(wordcloud(word, n, max.words = 100, colors = "skyblue4")) 
+  #plot word cloud
+
+```
+
+## Positive & Negative worldcloud plot
+
+Figure 4 displays the sentiment words frequency where red words represent the negative sentiment and the blue words represent the positive sentiment. This is the word cloud version for data in the Figure 2.
+
+```{R, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="Sentiment Wordcloud Plot"}
+tidy_book %>%
+  
+  inner_join(get_sentiments("bing")) %>%
+  # inner_join includes all rows in tidy_book and sentiment lexicons in "bing"
+
+  count(word, sentiment, sort = TRUE) %>%
+  # keep word and sentiment
+  # count the number# of the sentiment
+  # sort by the number# of count  
+  
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  # Cast a molten data frame "sentiment" into an array or data frame wih "negative" and "positive"
+  
+  comparison.cloud(colors = c("indianred1", "lightskyblue"),
+                   max.words = 120) #plot the comparison cloud
+
+```
+
+## Additional lexicon - longhran
+
+The lexicon method Loughran categorizes words in a binary fashion into categories of positive, negative, uncertainty, litigious, constraining, superfluous. I only choose the category of positive and negative, and calculate the sentiment score. Then I plot the Loghran lexicon method with other three methods to do the comparison. The plot indicates the sentiment are mostly positive in the book which is much different with the other three. So I could suggest that the Loughran lexicon method fits not really well in this book.
+
+```{R, echo=FALSE, warning=FALSE, message=FALSE, fig.cap="Sentiment Plot by Four Methods"}
+
+# get_sentiments("loughran")
+loughran <- tidy_book %>%
+  inner_join(get_sentiments("loughran")) %>%
+  # inner_join includes all rows in tidy_book and sentiment lexicons in "Loughran"
+
+  mutate(method = "loughran") %>% 
+  # add a coloum "method" with all elements of "Loughran"
+  
+  filter(sentiment %in% c("positive", "negative")) %>%
+  # subset a data frame with sentiment = "positive" or "negative"
+  
+  count(method, index = linenumber %/% 80, sentiment) %>%
+  # keep "method column"
+  # create a column "index" = linenumber/80
+  # count the number# of sentiment  
+  
+  pivot_wider(names_from = sentiment,
+              values_from = n,
+              values_fill = 0) %>% 
+  # it makes a dataset wider by increasing the number of columns and decreasing the number of rows
+  # make the data in sentiment be the variables
+
+  mutate(sentiment = positive - negative)
+  # add column “sentime” = positive - negative
+
+
+# ggplot(loughran, aes(index, sentiment)) +
+#   geom_col(show.legend = FALSE, , fill = "slateblue1") +
+#   ggtitle("Sentiment through the narratives of The Odyssey") +
+#   theme(plot.title = element_text(vjust = "0.5")) +
+#   theme_bw()
+# unique(loughran$sentiment)
+
+bind_rows(afinn, 
+          bing_and_nrc, loughran) %>%
+  #bind three data frames by row
+  
+  ggplot(aes(index, sentiment, fill = method)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~method, ncol = 1, scales = "free_y")+
+  theme_bw()
+
+```
+
+## Citation
+Text Mining with R https://www.tidytextmining.com
